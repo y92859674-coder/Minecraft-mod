@@ -5,9 +5,9 @@
   "name": "AutoCart",
   "description": "Automatically places a TNT minecart when you place a rail.",
   "license": "MIT",
-  "environment": "*",
+  "environment": "client",
   "entrypoints": {
-    "main": ["com.example.autocart.AutoCart"]
+    "client": ["com.example.autocart.AutoCart"]
   },
   "depends": {
     "fabricloader": ">=0.18.5",
