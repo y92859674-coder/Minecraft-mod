@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "autocart",
+  "version": "1.0.0",
+  "name": "AutoCart",
+  "description": "Automatically places a TNT minecart when you place a rail.",
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.example.autocart.AutoCart"]
+  },
+  "depends": {
+    "fabricloader": ">=0.18.5",
+    "minecraft": "1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
