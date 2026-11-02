@@ -1,11 +1,9 @@
 package com.example.autocart;
 
-import java.util.ArrayList;
-import java.util.List;
-
-import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
@@ -17,64 +15,56 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.context.BlockPlaceContext;
-import net.minecraft.world.item.context.UseOnContext;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.server.level.ServerPlayer;
 
-public class AutoCart implements ModInitializer {
+public class AutoCart implements ClientModInitializer {
 
-    private record Pending(ServerPlayer player, InteractionHand hand, BlockPos pos) {}
-
-    private static final List<Pending> PENDING = new ArrayList<>();
+    private static BlockPos pendingPos = null;
+    private static int ticksLeft = 0;
 
     @Override
-    public void onInitialize() {
-        UseBlockCallback.EVENT.register((Player player, Level level, InteractionHand hand, BlockHitResult hit) -> {
-            if (level.isClientSide() || !(player instanceof ServerPlayer sp)) {
+    public void onInitializeClient() {
+        UseBlockCallback.EVENT.register((player, level, hand, hit) -> {
+            if (!level.isClientSide()) return InteractionResult.PASS;
+            ItemStack held = player.getItemInHand(hand);
+            if (!held.is(ItemTags.RAILS) || findCartSlot(player) < 0) {
                 return InteractionResult.PASS;
             }
-            ItemStack held = sp.getItemInHand(hand);
-            if (!held.is(ItemTags.RAILS) || findCart(sp) < 0) {
-                return InteractionResult.PASS;
-            }
-            BlockPos pos = new BlockPlaceContext(sp, hand, held, hit).getClickedPos();
-            PENDING.add(new Pending(sp, hand, pos.immutable()));
+            pendingPos = new BlockPlaceContext(player, hand, held, hit).getClickedPos().immutable();
+            ticksLeft = 20;
             return InteractionResult.PASS;
         });
 
-        ServerTickEvents.END_SERVER_TICK.register(server -> {
-            if (PENDING.isEmpty()) return;
-            List<Pending> todo = new ArrayList<>(PENDING);
-            PENDING.clear();
+        ClientTickEvents.END_CLIENT_TICK.register(mc -> {
+            if (pendingPos == null) return;
+            LocalPlayer player = mc.player;
+            if (player == null || mc.level == null || mc.gameMode == null) {
+                pendingPos = null;
+                return;
+            }
+            if (mc.level.getBlockState(pendingPos).is(BlockTags.RAILS)) {
+                BlockPos pos = pendingPos;
+                pendingPos = null;
+                int slot = findCartSlot(player);
+                if (slot < 0) return;
 
-            for (Pending p : todo) {
-                ServerPlayer player = p.player();
-                Level level = player.level();
-                if (!level.getBlockState(p.pos()).is(BlockTags.RAILS)) continue;
-
-                int slot = findCart(player);
-                if (slot < 0) continue;
-
-                ItemStack cart = player.getInventory().getItem(slot);
-                ItemStack previous = player.getItemInHand(p.hand());
+                Inventory inv = player.getInventory();
+                int old = inv.getSelectedSlot();
+                inv.setSelectedSlot(slot);
                 BlockHitResult hit = new BlockHitResult(
-                        Vec3.atCenterOf(p.pos()), Direction.UP, p.pos(), false);
-
-                player.setItemInHand(p.hand(), cart);
-                try {
-                    cart.useOn(new UseOnContext(player, p.hand(), hit));
-                } finally {
-                    player.setItemInHand(p.hand(), previous);
-                }
+                        Vec3.atCenterOf(pos), Direction.UP, pos, false);
+                mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
+                inv.setSelectedSlot(old);
+            } else if (--ticksLeft <= 0) {
+                pendingPos = null;
             }
         });
     }
 
-    private static int findCart(Player player) {
+    private static int findCartSlot(Player player) {
         Inventory inv = player.getInventory();
-        for (int i = 0; i < inv.getContainerSize(); i++) {
+        for (int i = 0; i < 9; i++) {
             if (inv.getItem(i).is(Items.TNT_MINECART)) return i;
         }
         return -1;
